@@ -6,7 +6,7 @@ using System.Drawing.Imaging;
 using System.Runtime.InteropServices;
 using System.Text;
 using OpenCvSharp;
-using OpenCvSharp.Extensions;
+using OpenCvSharp.GdipExtensions;
 using RobloxMacroStudio.Models;
 
 namespace RobloxMacroStudio.Services

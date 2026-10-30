@@ -1,0 +1,64 @@
+{
+  "Title": "Roblox Waypoint Move & Rotate at Point",
+  "Description": "Walks forward in background until a target checkpoint is reached, then immediately stops and rotates camera ~90 degrees.",
+  "LoopCount": 0,
+  "LoopIntervalMs": 500,
+  "StopOnError": false,
+  "Actions": [
+    {
+      "Id": "cam_init",
+      "Name": "1. Reset Camera Heading (Zoom Snap)",
+      "Type": "RobloxCameraReset",
+      "IsEnabled": true,
+      "CameraResetMode": "ZoomFirstPersonAndOut",
+      "ZoomInCount": 8,
+      "ZoomOutCount": 5
+    },
+    {
+      "Id": "move_until_reach",
+      "Name": "2. Move Forward Until Point & Rotate View",
+      "Type": "MoveUntilCheckpoint",
+      "IsEnabled": true,
+      "KeyCode": "W",
+      "CheckpointType": "TemplateImage",
+      "TemplateImagePath": "",
+      "MatchThreshold": 0.8,
+      "UseMultiScale": true,
+      "MinScale": 0.8,
+      "MaxScale": 1.2,
+      "CheckIntervalMs": 150,
+      "MaxDurationMs": 7000,
+      "ArrivalAction": "RotateCameraRight",
+      "RotateDeltaPixels": 120,
+      "ArrivalKey": "E"
+    },
+    {
+      "Id": "settle_delay",
+      "Name": "3. Inertia Wait",
+      "Type": "Delay",
+      "IsEnabled": true,
+      "DelayMs": 250,
+      "UseRandomJitter": true,
+      "JitterPercentage": 10
+    },
+    {
+      "Id": "interact_action",
+      "Name": "4. Center Click Interact",
+      "Type": "Click",
+      "IsEnabled": true,
+      "CoordSource": "ScreenCenter",
+      "MouseButton": "Left",
+      "OffsetX": 0,
+      "OffsetY": 0
+    },
+    {
+      "Id": "cycle_rest",
+      "Name": "5. Loop Rest",
+      "Type": "Delay",
+      "IsEnabled": true,
+      "DelayMs": 800,
+      "UseRandomJitter": true,
+      "JitterPercentage": 15
+    }
+  ]
+}

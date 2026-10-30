@@ -27,8 +27,12 @@ namespace RobloxMacroStudio.ViewModels
         private readonly WindowPickerService _windowPickerService;
         private readonly MacroEngine _engine;
 
+        public AppSettings Settings { get; private set; }
+
         public ObservableCollection<WindowInfo> OpenWindows { get; } = new();
         public ObservableCollection<MacroLogEntry> Logs { get; } = new();
+        public ObservableCollection<string> RecentScriptPaths { get; } = new();
+        public ObservableCollection<string> AvailablePresets { get; } = new();
 
         private WindowInfo? _selectedWindow;
         public WindowInfo? SelectedWindow
@@ -105,11 +109,12 @@ namespace RobloxMacroStudio.ViewModels
             set
             {
                 _inputService.UseBackgroundMode = value;
+                Settings.UseBackgroundMode = value;
+                Settings.Save();
                 OnPropertyChanged();
             }
         }
 
-        // Selection Rect on Preview Image (ROI or Template Snipping)
         private System.Drawing.Rectangle _selectionRect = System.Drawing.Rectangle.Empty;
         public System.Drawing.Rectangle SelectionRect
         {
@@ -145,6 +150,7 @@ namespace RobloxMacroStudio.ViewModels
         public ICommand LoadScriptCommand { get; }
         public ICommand SaveScriptCommand { get; }
         public ICommand ClearLogsCommand { get; }
+        public ICommand LoadPresetCommand { get; }
 
         public ICommand SaveTemplateFromSelectionCommand { get; }
         public ICommand SetRoiFromSelectionCommand { get; }
@@ -156,8 +162,10 @@ namespace RobloxMacroStudio.ViewModels
 
         public MainViewModel()
         {
+            Settings = AppSettings.Load();
+
             _captureService = new Win32CaptureService();
-            _inputService = new WindowsInputService();
+            _inputService = new WindowsInputService { UseBackgroundMode = Settings.UseBackgroundMode };
             _visionService = new OpenCvVisionService();
             _robloxCameraService = new RobloxCameraService(_inputService, _visionService, _captureService);
             _windowPickerService = new WindowPickerService();
@@ -209,6 +217,7 @@ namespace RobloxMacroStudio.ViewModels
             LoadScriptCommand = new RelayCommand(LoadScript);
             SaveScriptCommand = new RelayCommand(SaveScript);
             ClearLogsCommand = new RelayCommand(() => Logs.Clear());
+            LoadPresetCommand = new RelayCommand(param => LoadPresetByName(param as string));
 
             SaveTemplateFromSelectionCommand = new RelayCommand(SaveTemplateFromSelection, () => HasValidSelection && _currentCapturedMat != null);
             SetRoiFromSelectionCommand = new RelayCommand(SetRoiFromSelection, () => HasValidSelection && SelectedAction != null);
@@ -238,23 +247,44 @@ namespace RobloxMacroStudio.ViewModels
                 AddLog(MacroLogLevel.Success, "Shift-Lock toggled.");
             }, () => SelectedWindow != null);
 
-            // Populate sample default actions
-            InitializeDefaultScript();
+            // Populate recent scripts & available presets
+            RefreshRecentScripts();
+            DiscoverPresets();
+
+            // Auto-load last script if configured, else default
+            bool loadedLast = false;
+            if (Settings.AutoLoadLastScript && !string.IsNullOrWhiteSpace(Settings.LastScriptPath) && File.Exists(Settings.LastScriptPath))
+            {
+                try
+                {
+                    Script = MacroScript.LoadFromFile(Settings.LastScriptPath);
+                    SelectedAction = Script.Actions.FirstOrDefault();
+                    loadedLast = true;
+                    AddLog(MacroLogLevel.Success, $"Auto-loaded previous script: {Path.GetFileName(Settings.LastScriptPath)}");
+                }
+                catch { }
+            }
+
+            if (!loadedLast)
+            {
+                InitializeDefaultScript();
+            }
+
             RefreshWindows();
         }
 
         public void InitializeDefaultScript()
         {
-            Script.Title = "Roblox 3D Viewport Stabilization & Auto Loop";
-            Script.Description = "Resets 3D camera zoom/heading, verifies HUD anchor, and performs calibrated navigation.";
-            Script.LoopCount = 0; // Infinite
+            Script.Title = "Roblox Waypoint Move & Rotate at Point";
+            Script.Description = "Walks forward in background until reaching checkpoint, stops, and rotates camera ~90 degrees.";
+            Script.LoopCount = 0;
             Script.LoopIntervalMs = 500;
 
             Script.Actions.Clear();
 
             Script.Actions.Add(new MacroAction
             {
-                Name = "Stabilize 3D Camera",
+                Name = "1. Stabilize 3D Camera Heading",
                 Type = ActionType.RobloxCameraReset,
                 CameraResetMode = RobloxCameraResetMode.ZoomFirstPersonAndOut,
                 ZoomInCount = 8,
@@ -263,23 +293,32 @@ namespace RobloxMacroStudio.ViewModels
 
             Script.Actions.Add(new MacroAction
             {
-                Name = "Wait Camera Settle",
+                Name = "2. Walk Forward Until Point & Rotate View",
+                Type = ActionType.MoveUntilCheckpoint,
+                KeyCode = "W",
+                CheckpointType = CheckpointCheckType.TemplateImage,
+                MatchThreshold = 0.80,
+                UseMultiScale = true,
+                MinScale = 0.8,
+                MaxScale = 1.2,
+                CheckIntervalMs = 150,
+                MaxDurationMs = 7000,
+                ArrivalAction = OnArrivalAction.RotateCameraRight,
+                RotateDeltaPixels = 120,
+                ArrivalKey = "E"
+            });
+
+            Script.Actions.Add(new MacroAction
+            {
+                Name = "3. Settle Delay",
                 Type = ActionType.Delay,
-                DelayMs = 300,
+                DelayMs = 250,
                 UseRandomJitter = true
             });
 
             Script.Actions.Add(new MacroAction
             {
-                Name = "Calibrated Walk Forward",
-                Type = ActionType.CalibratedMove,
-                KeyCode = "W",
-                KeyHoldDurationMs = 800
-            });
-
-            Script.Actions.Add(new MacroAction
-            {
-                Name = "Interact / Attack (Click)",
+                Name = "4. Interact / Attack (Click)",
                 Type = ActionType.Click,
                 CoordSource = CoordinateSource.ScreenCenter,
                 MouseButton = MouseButtonType.Left,
@@ -289,14 +328,63 @@ namespace RobloxMacroStudio.ViewModels
 
             Script.Actions.Add(new MacroAction
             {
-                Name = "Rest Delay",
+                Name = "5. Loop Rest Delay",
                 Type = ActionType.Delay,
-                DelayMs = 1000,
+                DelayMs = 800,
                 UseRandomJitter = true,
-                JitterPercentage = 20
+                JitterPercentage = 15
             });
 
             SelectedAction = Script.Actions.FirstOrDefault();
+        }
+
+        public void RefreshRecentScripts()
+        {
+            RecentScriptPaths.Clear();
+            foreach (var path in Settings.RecentScripts.Where(File.Exists))
+            {
+                RecentScriptPaths.Add(path);
+            }
+        }
+
+        public void DiscoverPresets()
+        {
+            AvailablePresets.Clear();
+            string presetDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Presets");
+            if (Directory.Exists(presetDir))
+            {
+                foreach (var file in Directory.GetFiles(presetDir, "*.json"))
+                {
+                    AvailablePresets.Add(Path.GetFileName(file));
+                }
+            }
+        }
+
+        public void LoadPresetByName(string? fileName)
+        {
+            if (string.IsNullOrWhiteSpace(fileName)) return;
+
+            string path = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Presets", fileName);
+            if (!File.Exists(path))
+            {
+                path = Path.Combine("Presets", fileName);
+            }
+
+            if (File.Exists(path))
+            {
+                try
+                {
+                    Script = MacroScript.LoadFromFile(path);
+                    SelectedAction = Script.Actions.FirstOrDefault();
+                    Settings.AddRecentScript(path);
+                    RefreshRecentScripts();
+                    AddLog(MacroLogLevel.Success, $"Loaded preset: {fileName}");
+                }
+                catch (Exception ex)
+                {
+                    AddLog(MacroLogLevel.Error, $"Failed to load preset: {ex.Message}");
+                }
+            }
         }
 
         public void RefreshWindows()
@@ -310,7 +398,7 @@ namespace RobloxMacroStudio.ViewModels
             {
                 OpenWindows.Add(win);
 
-                // Auto-pick LDPlayer or Roblox if found
+                // Auto-pick LDPlayer or emulator if found
                 if (preferred == null && win.IsEmulator)
                 {
                     preferred = win;
@@ -366,7 +454,6 @@ namespace RobloxMacroStudio.ViewModels
             var info = _captureService.GetWindowInfo(hWnd);
             if (info != null)
             {
-                // Find or add to list
                 var existing = OpenWindows.FirstOrDefault(w => w.Handle == info.Handle);
                 if (existing != null)
                 {
@@ -464,7 +551,6 @@ namespace RobloxMacroStudio.ViewModels
         {
             if (SelectedAction == null) return;
 
-            // Deep clone via JSON
             var json = System.Text.Json.JsonSerializer.Serialize(SelectedAction);
             var copy = System.Text.Json.JsonSerializer.Deserialize<MacroAction>(json);
             if (copy != null)
@@ -485,8 +571,12 @@ namespace RobloxMacroStudio.ViewModels
                 return;
             }
 
+            string templatesDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Templates");
+            if (!Directory.Exists(templatesDir)) Directory.CreateDirectory(templatesDir);
+
             var sfd = new SaveFileDialog
             {
+                InitialDirectory = templatesDir,
                 Filter = "PNG Image (*.png)|*.png",
                 DefaultExt = ".png",
                 FileName = $"template_{DateTime.Now:yyyyMMdd_HHmmss}.png"
@@ -502,12 +592,14 @@ namespace RobloxMacroStudio.ViewModels
 
                     AddLog(MacroLogLevel.Success, $"Template snippet saved: {sfd.FileName}");
 
-                    // If currently selected action is FindImage, auto-fill the path!
-                    if (SelectedAction != null && SelectedAction.Type == ActionType.FindImage)
+                    if (SelectedAction != null)
                     {
-                        SelectedAction.TemplateImagePath = sfd.FileName;
-                        OnPropertyChanged(nameof(SelectedAction));
-                        AddLog(MacroLogLevel.Info, $"Assigned saved template to selected action '{SelectedAction.Name}'");
+                        if (SelectedAction.Type == ActionType.FindImage || SelectedAction.Type == ActionType.MoveUntilCheckpoint)
+                        {
+                            SelectedAction.TemplateImagePath = sfd.FileName;
+                            OnPropertyChanged(nameof(SelectedAction));
+                            AddLog(MacroLogLevel.Info, $"Assigned saved template to selected action '{SelectedAction.Name}'");
+                        }
                     }
                 }
                 catch (Exception ex)
@@ -534,7 +626,7 @@ namespace RobloxMacroStudio.ViewModels
         {
             if (SelectedAction == null || SelectedWindow == null) return;
 
-            AddLog(MacroLogLevel.Info, $"Testing single action: '{SelectedAction.Name}' ({SelectedAction.Type})...");
+            AddLog(MacroLogLevel.Info, $"Testing action: '{SelectedAction.Name}' ({SelectedAction.Type})...");
 
             switch (SelectedAction.Type)
             {
@@ -569,6 +661,33 @@ namespace RobloxMacroStudio.ViewModels
                         AddLog(MacroLogLevel.Warning, $"[TEST FAILED] Not found. Best Score: {res.Confidence:P1} (Threshold: {SelectedAction.MatchThreshold:P1})");
                     }
                     PreviewImage = preview.ToBitmapSource();
+                    break;
+                }
+
+                case ActionType.MoveUntilCheckpoint:
+                {
+                    AddLog(MacroLogLevel.Info, $"[TEST] Testing walk '{SelectedAction.KeyCode}' for 600ms then executing arrival rotation...");
+                    await _inputService.KeyPressAsync(SelectedWindow.Handle, SelectedAction.KeyCode, 600);
+                    await Task.Delay(150);
+
+                    var clientRect = _captureService.GetClientRect(SelectedWindow.Handle);
+                    int cx = clientRect.Width > 0 ? clientRect.Width / 2 : 400;
+                    int cy = clientRect.Height > 0 ? clientRect.Height / 2 : 300;
+
+                    if (SelectedAction.ArrivalAction == OnArrivalAction.RotateCameraRight)
+                    {
+                        await _inputService.DragAsync(SelectedWindow.Handle, cx, cy, cx + SelectedAction.RotateDeltaPixels, cy, 200, MouseButtonType.Right);
+                    }
+                    else if (SelectedAction.ArrivalAction == OnArrivalAction.RotateCameraLeft)
+                    {
+                        await _inputService.DragAsync(SelectedWindow.Handle, cx, cy, Math.Max(20, cx - SelectedAction.RotateDeltaPixels), cy, 200, MouseButtonType.Right);
+                    }
+                    else if (SelectedAction.ArrivalAction == OnArrivalAction.ResetCameraHeading)
+                    {
+                        await _robloxCameraService.ResetCameraZoomAsync(SelectedWindow.Handle, 8, 5);
+                    }
+
+                    AddLog(MacroLogLevel.Success, "[TEST SUCCESS] Move and arrival rotation simulated successfully.");
                     break;
                 }
 
@@ -617,6 +736,8 @@ namespace RobloxMacroStudio.ViewModels
                     var loaded = MacroScript.LoadFromFile(ofd.FileName);
                     Script = loaded;
                     SelectedAction = Script.Actions.FirstOrDefault();
+                    Settings.AddRecentScript(ofd.FileName);
+                    RefreshRecentScripts();
                     AddLog(MacroLogLevel.Success, $"Loaded script: {Path.GetFileName(ofd.FileName)} ({Script.Actions.Count} actions)");
                 }
                 catch (Exception ex)
@@ -641,6 +762,8 @@ namespace RobloxMacroStudio.ViewModels
                 try
                 {
                     Script.SaveToFile(sfd.FileName);
+                    Settings.AddRecentScript(sfd.FileName);
+                    RefreshRecentScripts();
                     AddLog(MacroLogLevel.Success, $"Saved script to: {sfd.FileName}");
                 }
                 catch (Exception ex)

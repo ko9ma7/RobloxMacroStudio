@@ -1,4 +1,4 @@
-# Roblox Macro Studio (로블록스 3D 시점 보정 & OpenCV 비전 매크로)
+# Roblox Macro Studio (로블록스 3D 시점 보정 & OpenCV 5 비전 매크로)
 
 <div align="center">
 
@@ -7,7 +7,7 @@
 [![Build and Release](https://github.com/ko9ma7/RobloxMacroStudio/actions/workflows/build-and-release.yml/badge.svg)](https://github.com/ko9ma7/RobloxMacroStudio/actions)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![.NET](https://img.shields.io/badge/.NET-8.0-purple.svg)](https://dotnet.microsoft.com/)
-[![OpenCvSharp4](https://img.shields.io/badge/OpenCvSharp4-4.13-brightgreen.svg)](https://github.com/shimat/opencvsharp)
+[![OpenCvSharp5](https://img.shields.io/badge/OpenCvSharp5-5.0.0-brightgreen.svg)](https://github.com/shimat/opencvsharp)
 [![Platform](https://img.shields.io/badge/Platform-Windows%2010%20%2F%2011-lightgrey.svg)]()
 
 **LDPlayer 안드로이드 에뮬레이터 및 로블록스 3D 환경 전용 시점 보정 & 비전 기반 C# WPF 매크로 스튜디오**
@@ -56,13 +56,14 @@
 
 ### 📝 4. 비주얼 시퀀스 에디터 & 스크립트 엔진
 * **지원 액션 유형**:
-  - `FindImage`: 템플릿 매칭 (임계값, 다중스케일, ROI)
-  - `FindColor`: HSV 색상 블롭 검출
+  - `MoveUntilCheckpoint`: **목표 지점 도달 시 즉각 정지 및 시점 회전** (앞으로 전진하다 체크포인트 발견 시 `KeyUp` 후 카메라 90도 회전/스냅)
+  - `FindImage`: 템플릿 매칭 (임계값, 다중스케일 0.8x-1.2x, ROI)
+  - `FindColor`: HSV 색상 블롭 검출 (조명/그림자 무관)
   - `Click`: 고정 좌표 / 마지막 검출 위치 중심(`LastMatchCenter`) / 화면 중심 클릭 (좌/우/더블)
   - `Drag`: 시점 회전 및 인벤토리 아이템 드래그
-  - `KeyPress`: 지속 시간(ms) 지정 키보드 입력 (`W`, `A`, `S`, `D`, `Space`, `E`, `I`, `O` 등)
+  - `KeyPress`: 비활성창 전용 스캔코드 펄스 키보드 입력 (`W`, `A`, `S`, `D`, `Space`, `E`, `I`, `O` 등)
   - `CalibratedMove`: 방향 이동 후 앵커 위치 재검증 보정 이동
-  - `RobloxCameraReset`: 로블록스 전용 시점 정규화 루틴 실행
+  - `RobloxCameraReset`: 로블록스 전용 시점 정규화 루틴 (1인칭 줌 스냅)
   - `RobloxCameraSweep`: 회전 스윕 앵커 탐색
   - `Delay`: 사람과 유사한 지연(Human-like Anti-detection Jitter ±15%)
   - `ConditionBranch`: 이미지 검출 성공/실패 여부에 따른 스텝 점프 및 예외 복구

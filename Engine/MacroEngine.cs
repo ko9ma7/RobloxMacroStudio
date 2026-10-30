@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Drawing;
 using System.IO;
 using System.Threading;
@@ -148,7 +149,6 @@ namespace RobloxMacroStudio.Engine
 
                     while (i < actionCount && !token.IsCancellationRequested)
                     {
-                        // Check pause
                         _pauseEvent?.Wait(token);
 
                         var action = script.Actions[i];
@@ -170,7 +170,6 @@ namespace RobloxMacroStudio.Engine
                             return;
                         }
 
-                        // Check branching / jumps
                         if (action.Type == ActionType.ConditionBranch)
                         {
                             bool conditionMet = action.ConditionIfFound ? _context.LastMatch.IsFound : !_context.LastMatch.IsFound;
@@ -199,7 +198,6 @@ namespace RobloxMacroStudio.Engine
             }
             catch (OperationCanceledException)
             {
-                // Normal cancellation
             }
             catch (Exception ex)
             {
@@ -396,6 +394,137 @@ namespace RobloxMacroStudio.Engine
                         return true;
                     }
 
+                    case ActionType.MoveUntilCheckpoint:
+                    {
+                        Log(MacroLogLevel.Info, $"Move Until Checkpoint: walking '{action.KeyCode}' (Max: {action.MaxDurationMs}ms)...");
+
+                        Mat? template = null;
+                        if (action.CheckpointType == CheckpointCheckType.TemplateImage &&
+                            !string.IsNullOrWhiteSpace(action.TemplateImagePath) &&
+                            File.Exists(action.TemplateImagePath))
+                        {
+                            template = GetOrCreateTemplate(action.TemplateImagePath);
+                        }
+
+                        var stopwatch = Stopwatch.StartNew();
+                        bool checkpointReached = false;
+
+                        // 1. Begin movement (hold key in background)
+                        await _inputService.KeyDownAsync(targetHwnd, action.KeyCode);
+
+                        try
+                        {
+                            while (!token.IsCancellationRequested && stopwatch.ElapsedMilliseconds < action.MaxDurationMs)
+                            {
+                                _pauseEvent?.Wait(token);
+
+                                int checkDelay = Math.Max(50, action.CheckIntervalMs);
+                                await Task.Delay(checkDelay, token);
+
+                                using var frame = _captureService.CaptureWindow(targetHwnd, true);
+                                if (frame == null || frame.Empty())
+                                    continue;
+
+                                Rectangle? roi = (action.RoiWidth > 0 && action.RoiHeight > 0)
+                                    ? new Rectangle(action.RoiX, action.RoiY, action.RoiWidth, action.RoiHeight)
+                                    : null;
+
+                                if (action.CheckpointType == CheckpointCheckType.TemplateImage && template != null)
+                                {
+                                    var match = action.UseMultiScale
+                                        ? _visionService.MatchTemplateMultiScale(frame, template, action.MatchThreshold, action.MinScale, action.MaxScale, action.ScaleStep, roi)
+                                        : _visionService.MatchTemplate(frame, template, action.MatchThreshold, roi);
+
+                                    if (match.IsFound)
+                                    {
+                                        checkpointReached = true;
+                                        _context.LastMatch = match;
+                                        Log(MacroLogLevel.Success, $"Checkpoint reached! Template found at ({match.CenterX}, {match.CenterY}) Score: {match.Confidence:P1}");
+                                        break;
+                                    }
+                                }
+                                else if (action.CheckpointType == CheckpointCheckType.ColorBlob)
+                                {
+                                    var match = _visionService.FindColorBlob(
+                                        frame,
+                                        action.HsvMinH, action.HsvMaxH,
+                                        action.HsvMinS, action.HsvMaxS,
+                                        action.HsvMinV, action.HsvMaxV,
+                                        action.MinContourArea,
+                                        roi);
+
+                                    if (match.IsFound)
+                                    {
+                                        checkpointReached = true;
+                                        _context.LastMatch = match;
+                                        Log(MacroLogLevel.Success, $"Checkpoint reached! Color blob detected at ({match.CenterX}, {match.CenterY})");
+                                        break;
+                                    }
+                                }
+                                else if (action.CheckpointType == CheckpointCheckType.TimedOnly)
+                                {
+                                    if (stopwatch.ElapsedMilliseconds >= action.KeyHoldDurationMs)
+                                    {
+                                        checkpointReached = true;
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                        finally
+                        {
+                            // 2. Guaranteed stop: release movement key
+                            await _inputService.KeyUpAsync(targetHwnd, action.KeyCode);
+                        }
+
+                        if (!checkpointReached)
+                        {
+                            Log(MacroLogLevel.Warning, $"Movement timed out after {stopwatch.ElapsedMilliseconds}ms without reaching checkpoint. Stopped.");
+                        }
+
+                        // 3. Inertia settle delay
+                        await Task.Delay(150, token);
+
+                        // 4. Perform OnArrivalAction (e.g. Rotate Camera)
+                        if (checkpointReached || action.ArrivalAction != OnArrivalAction.None)
+                        {
+                            var clientRect = _captureService.GetClientRect(targetHwnd);
+                            int centerX = clientRect.Width > 0 ? clientRect.Width / 2 : 400;
+                            int centerY = clientRect.Height > 0 ? clientRect.Height / 2 : 300;
+
+                            switch (action.ArrivalAction)
+                            {
+                                case OnArrivalAction.RotateCameraRight:
+                                    Log(MacroLogLevel.Info, $"Rotating camera RIGHT by {action.RotateDeltaPixels}px...");
+                                    await _inputService.DragAsync(targetHwnd, centerX, centerY, centerX + action.RotateDeltaPixels, centerY, 200, MouseButtonType.Right);
+                                    break;
+
+                                case OnArrivalAction.RotateCameraLeft:
+                                    Log(MacroLogLevel.Info, $"Rotating camera LEFT by {action.RotateDeltaPixels}px...");
+                                    await _inputService.DragAsync(targetHwnd, centerX, centerY, Math.Max(20, centerX - action.RotateDeltaPixels), centerY, 200, MouseButtonType.Right);
+                                    break;
+
+                                case OnArrivalAction.ResetCameraHeading:
+                                    Log(MacroLogLevel.Info, "Stabilizing camera heading via 1st person snap...");
+                                    await _robloxCameraService.ResetCameraZoomAsync(targetHwnd, action.ZoomInCount, action.ZoomOutCount);
+                                    break;
+
+                                case OnArrivalAction.PressKey:
+                                    Log(MacroLogLevel.Info, $"Pressing arrival action key '{action.ArrivalKey}'...");
+                                    await _inputService.KeyPressAsync(targetHwnd, action.ArrivalKey, 100);
+                                    break;
+
+                                case OnArrivalAction.None:
+                                default:
+                                    break;
+                            }
+
+                            await Task.Delay(150, token);
+                        }
+
+                        return checkpointReached;
+                    }
+
                     case ActionType.Delay:
                     {
                         int delay = action.DelayMs;
@@ -409,7 +538,7 @@ namespace RobloxMacroStudio.Engine
                     }
 
                     case ActionType.ConditionBranch:
-                        return true; // Flow logic handled in caller loop
+                        return true;
 
                     case ActionType.LogMessage:
                         Log(MacroLogLevel.Info, $"[User Log] {action.LogText}");
@@ -438,7 +567,6 @@ namespace RobloxMacroStudio.Engine
                             _context.LastMatch.CenterY + action.OffsetY
                         );
                     }
-                    // Fallback to fixed
                     return (action.TargetX + action.OffsetX, action.TargetY + action.OffsetY);
 
                 case CoordinateSource.ScreenCenter:

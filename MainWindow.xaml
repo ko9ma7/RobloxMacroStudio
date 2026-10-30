@@ -6,9 +6,9 @@
         xmlns:local="clr-namespace:RobloxMacroStudio"
         xmlns:models="clr-namespace:RobloxMacroStudio.Models"
         mc:Ignorable="d"
-        Title="Roblox Macro Studio - 3D Viewport &amp; Vision Automation"
+        Title="Roblox Macro Studio - 3D Viewport &amp; OpenCV 5 Vision Automation"
         Icon="Assets/app-icon.png"
-        Height="900" Width="1440"
+        Height="920" Width="1440"
         MinHeight="750" MinWidth="1100"
         WindowStartupLocation="CenterScreen"
         Background="#0F172A"
@@ -205,11 +205,11 @@
                     <StackPanel VerticalAlignment="Center">
                         <StackPanel Orientation="Horizontal">
                             <TextBlock Text="ROBLOX MACRO STUDIO" FontWeight="Bold" FontSize="15" Foreground="{StaticResource TextPrimary}"/>
-                            <Border Background="#312E81" CornerRadius="4" Padding="6,2" Margin="8,0,0,0">
-                                <TextBlock Text="3D Stabilized" FontSize="10" FontWeight="Bold" Foreground="#A5B4FC"/>
+                            <Border Background="#065F46" CornerRadius="4" Padding="6,2" Margin="8,0,0,0">
+                                <TextBlock Text="OpenCV 5" FontSize="10" FontWeight="Bold" Foreground="#6EE7B7"/>
                             </Border>
                         </StackPanel>
-                        <TextBlock Text="OpenCV Vision &amp; Roblox 3D Perspective Normalization" FontSize="11" Foreground="{StaticResource TextMuted}"/>
+                        <TextBlock Text="Roblox 3D Viewport Stabilization &amp; Inactive Background Control" FontSize="11" Foreground="{StaticResource TextMuted}"/>
                     </StackPanel>
                 </StackPanel>
 
@@ -223,7 +223,7 @@
                     </Button>
 
                     <!-- Target Window Dropdown -->
-                    <ComboBox Width="340"
+                    <ComboBox Width="320"
                               ItemsSource="{Binding OpenWindows}"
                               SelectedItem="{Binding SelectedWindow, Mode=TwoWay}"
                               DisplayMemberPath="DisplayName"
@@ -252,16 +252,15 @@
 
                     <!-- Background Mode Toggle -->
                     <CheckBox IsChecked="{Binding UseBackgroundInput, Mode=TwoWay}"
-                              Margin="16,0,0,0"
+                              Margin="14,0,0,0"
                               VerticalAlignment="Center"
-                              ToolTip="PostMessage background input (allows automating even when covered by other windows)">
-                        <TextBlock Text="Background Mode" Foreground="{StaticResource TextPrimary}"/>
+                              ToolTip="PostMessage background input to RenderWindow (allows automating even when covered by other windows)">
+                        <TextBlock Text="Inactive Background Mode" Foreground="{StaticResource TextPrimary}" FontWeight="SemiBold"/>
                     </CheckBox>
                 </StackPanel>
 
                 <!-- Hotkey Tip & Status Pill -->
                 <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
-                    <!-- Hotkey hint -->
                     <Border Background="#1E1B4B" CornerRadius="6" Padding="8,4" Margin="0,0,10,0" BorderBrush="#4338CA" BorderThickness="1">
                         <TextBlock Text="F5: Start | F7: Pause | F6: Stop" FontSize="11" Foreground="#C7D2FE" FontWeight="SemiBold"/>
                     </Border>
@@ -277,11 +276,11 @@
         <!-- ================= MAIN CONTENT 3-COLUMN LAYOUT ================= -->
         <Grid Grid.Row="1" Margin="0,0,0,10">
             <Grid.ColumnDefinitions>
-                <!-- Left: Action Sequence Workflow Editor (320px) -->
-                <ColumnDefinition Width="340" MinWidth="280"/>
+                <!-- Left: Action Sequence Workflow Editor (350px) -->
+                <ColumnDefinition Width="350" MinWidth="280"/>
                 <!-- Center: Live Window Preview & Interactive Snipping (flex) -->
                 <ColumnDefinition Width="*" MinWidth="350"/>
-                <!-- Right: Action Inspector & 3D Stabilization Guide (380px) -->
+                <!-- Right: Action Inspector & 3D Stabilization Guide (390px) -->
                 <ColumnDefinition Width="390" MinWidth="320"/>
             </Grid.ColumnDefinitions>
 
@@ -295,25 +294,39 @@
                         <RowDefinition Height="Auto"/>
                     </Grid.RowDefinitions>
 
-                    <!-- Script Settings Header -->
+                    <!-- Script Settings Header & Presets -->
                     <Grid Grid.Row="0" Margin="0,0,0,8">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="Auto"/>
-                        </Grid.ColumnDefinitions>
-                        <StackPanel Grid.Column="0">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+                        <StackPanel Grid.Row="0">
                             <TextBlock Text="Action Sequence" FontWeight="Bold" FontSize="14" Foreground="{StaticResource TextPrimary}"/>
                             <TextBlock Text="{Binding Script.Title}" FontSize="11" Foreground="{StaticResource TextMuted}" TextTrimming="CharacterEllipsis"/>
                         </StackPanel>
-                        <!-- Script Save / Load -->
-                        <StackPanel Grid.Column="1" Orientation="Horizontal">
-                            <Button Command="{Binding LoadScriptCommand}" ToolTip="Load Script (.json)" Margin="0,0,4,0" Padding="6,3">
-                                <TextBlock Text="📂 Open"/>
-                            </Button>
-                            <Button Command="{Binding SaveScriptCommand}" ToolTip="Save Script (.json)" Padding="6,3">
-                                <TextBlock Text="💾 Save"/>
-                            </Button>
-                        </StackPanel>
+
+                        <!-- Presets Dropdown & Script Save/Load Toolbar -->
+                        <Grid Grid.Row="1" Margin="0,6,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <!-- Presets Combo -->
+                            <ComboBox Grid.Column="0"
+                                      ItemsSource="{Binding AvailablePresets}"
+                                      SelectionChanged="PresetComboBox_SelectionChanged"
+                                      ToolTip="Load Ready-made Presets"
+                                      Margin="0,0,4,0"/>
+                            <!-- Open / Save -->
+                            <StackPanel Grid.Column="1" Orientation="Horizontal">
+                                <Button Command="{Binding LoadScriptCommand}" ToolTip="Load Script (.json)" Margin="0,0,4,0" Padding="6,3">
+                                    <TextBlock Text="📂 Open"/>
+                                </Button>
+                                <Button Command="{Binding SaveScriptCommand}" ToolTip="Save Script (.json)" Padding="6,3">
+                                    <TextBlock Text="💾 Save"/>
+                                </Button>
+                            </StackPanel>
+                        </Grid>
                     </Grid>
 
                     <!-- Loop Settings -->
@@ -381,7 +394,9 @@
                         <!-- Add Action ComboBox/Menu -->
                         <Menu Grid.Column="0" Background="Transparent" Foreground="{StaticResource TextPrimary}">
                             <MenuItem Header="➕ Add Action" FontWeight="Bold" Background="{StaticResource AccentColor}" Foreground="#FFFFFF" Padding="10,6">
-                                <MenuItem Header="🔍 Find Image (OpenCV)" Command="{Binding AddActionCommand}" CommandParameter="FindImage"/>
+                                <MenuItem Header="🚶➡️🎯 Move Until Checkpoint &amp; Rotate (도달 시 멈추고 회전)" Command="{Binding AddActionCommand}" CommandParameter="MoveUntilCheckpoint"/>
+                                <Separator Background="#334155"/>
+                                <MenuItem Header="🔍 Find Image (OpenCV 5)" Command="{Binding AddActionCommand}" CommandParameter="FindImage"/>
                                 <MenuItem Header="🎨 Find Color Blob (HSV)" Command="{Binding AddActionCommand}" CommandParameter="FindColor"/>
                                 <Separator Background="#334155"/>
                                 <MenuItem Header="🎯 3D Camera Reset (Roblox)" Command="{Binding AddActionCommand}" CommandParameter="RobloxCameraReset"/>
@@ -423,7 +438,6 @@
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="*"/>
-                        <RowDefinition Height="Auto"/>
                         <RowDefinition Height="Auto"/>
                     </Grid.RowDefinitions>
 
@@ -485,7 +499,7 @@
                                 <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
                             <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
-                                <TextBlock Text="💡 Hint: Drag a box around an icon, compass, or button to snip template or set ROI." FontSize="11" Foreground="{StaticResource TextMuted}"/>
+                                <TextBlock Text="💡 Hint: Drag on screen to snip template or set ROI search area." FontSize="11" Foreground="{StaticResource TextMuted}"/>
                             </StackPanel>
                             <StackPanel Grid.Column="1" Orientation="Horizontal">
                                 <Button Command="{Binding SaveTemplateFromSelectionCommand}"
@@ -534,8 +548,66 @@
 
                                 <!-- DYNAMIC PROPERTY EDITORS -->
 
-                                <!-- 1. FindImage Parameters -->
-                                <StackPanel Visibility="{Binding Type, ConverterParameter=FindImage, Converter={x:Null}}">
+                                <!-- 1. MoveUntilCheckpoint Parameters (Waypoint Navigation) -->
+                                <Border Background="#0F172A" CornerRadius="6" Padding="8" Margin="0,0,0,10"
+                                        BorderBrush="#334155" BorderThickness="1">
+                                    <StackPanel>
+                                        <TextBlock Text="🎯 WAYPOINT ARRIVAL &amp; ROTATION SETTINGS" FontSize="10" FontWeight="Bold" Foreground="{StaticResource CyanColor}" Margin="0,0,0,6"/>
+
+                                        <Grid Margin="0,0,0,6">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="*"/>
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel Grid.Column="0" Margin="0,0,3,0">
+                                                <TextBlock Text="Move Key (W,A,S,D)" FontSize="10" Foreground="{StaticResource TextMuted}"/>
+                                                <TextBox Text="{Binding KeyCode, Mode=TwoWay}"/>
+                                            </StackPanel>
+                                            <StackPanel Grid.Column="1" Margin="3,0,0,0">
+                                                <TextBlock Text="Max Timeout (ms)" FontSize="10" Foreground="{StaticResource TextMuted}"/>
+                                                <TextBox Text="{Binding MaxDurationMs, Mode=TwoWay}"/>
+                                            </StackPanel>
+                                        </Grid>
+
+                                        <TextBlock Text="Arrival Condition Type" FontSize="10" Foreground="{StaticResource TextMuted}" Margin="0,0,0,2"/>
+                                        <ComboBox SelectedItem="{Binding CheckpointType, Mode=TwoWay}"
+                                                  ItemsSource="{Binding Source={local:EnumBindingSource {x:Type models:CheckpointCheckType}}}"
+                                                  Margin="0,0,0,6"/>
+
+                                        <TextBlock Text="Checkpoint Template Image" FontSize="10" Foreground="{StaticResource TextMuted}" Margin="0,0,0,2"/>
+                                        <Grid Margin="0,0,0,6">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+                                            <TextBox Grid.Column="0" Text="{Binding TemplateImagePath, UpdateSourceTrigger=PropertyChanged}"/>
+                                            <Button Grid.Column="1" Content="..." Margin="4,0,0,0" Padding="8,2" Click="BrowseTemplate_Click"/>
+                                        </Grid>
+
+                                        <TextBlock Text="Action When Checkpoint Reached" FontSize="10" FontWeight="Bold" Foreground="{StaticResource SuccessColor}" Margin="0,4,0,2"/>
+                                        <ComboBox SelectedItem="{Binding ArrivalAction, Mode=TwoWay}"
+                                                  ItemsSource="{Binding Source={local:EnumBindingSource {x:Type models:OnArrivalAction}}}"
+                                                  Margin="0,0,0,6"/>
+
+                                        <Grid Margin="0,0,0,6">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="*"/>
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel Grid.Column="0" Margin="0,0,3,0">
+                                                <TextBlock Text="Rotate Drag Pixels (120px = ~90°)" FontSize="10" Foreground="{StaticResource TextMuted}"/>
+                                                <TextBox Text="{Binding RotateDeltaPixels, Mode=TwoWay}"/>
+                                            </StackPanel>
+                                            <StackPanel Grid.Column="1" Margin="3,0,0,0">
+                                                <TextBlock Text="Arrival Key (e.g. E)" FontSize="10" Foreground="{StaticResource TextMuted}"/>
+                                                <TextBox Text="{Binding ArrivalKey, Mode=TwoWay}"/>
+                                            </StackPanel>
+                                        </Grid>
+                                    </StackPanel>
+                                </Border>
+
+                                <!-- 2. FindImage Parameters -->
+                                <StackPanel Margin="0,0,0,8">
                                     <TextBlock Text="Template Image Path" Foreground="{StaticResource TextMuted}" FontSize="11" Margin="0,0,0,2"/>
                                     <Grid Margin="0,0,0,8">
                                         <Grid.ColumnDefinitions>
@@ -594,7 +666,7 @@
                                     </Border>
                                 </StackPanel>
 
-                                <!-- 2. FindColor Parameters (HSV) -->
+                                <!-- 3. FindColor Parameters (HSV) -->
                                 <StackPanel Margin="0,0,0,8">
                                     <Border Background="#0F172A" CornerRadius="6" Padding="8" Margin="0,0,0,10">
                                         <StackPanel>
@@ -631,7 +703,7 @@
                                     </Border>
                                 </StackPanel>
 
-                                <!-- 3. Click Parameters -->
+                                <!-- 4. Click Parameters -->
                                 <StackPanel Margin="0,0,0,8">
                                     <TextBlock Text="Coordinate Source" Foreground="{StaticResource TextMuted}" FontSize="11" Margin="0,0,0,2"/>
                                     <ComboBox SelectedItem="{Binding CoordSource, Mode=TwoWay}"
@@ -674,7 +746,7 @@
                                               Margin="0,0,0,8"/>
                                 </StackPanel>
 
-                                <!-- 4. KeyPress / CalibratedMove Parameters -->
+                                <!-- 5. KeyPress / CalibratedMove Parameters -->
                                 <StackPanel Margin="0,0,0,8">
                                     <Grid Margin="0,0,0,8">
                                         <Grid.ColumnDefinitions>
@@ -692,7 +764,7 @@
                                     </Grid>
                                 </StackPanel>
 
-                                <!-- 5. Roblox 3D Camera Reset Parameters -->
+                                <!-- 6. Roblox 3D Camera Reset Parameters -->
                                 <StackPanel Margin="0,0,0,8">
                                     <TextBlock Text="Camera Reset Mode" Foreground="{StaticResource TextMuted}" FontSize="11" Margin="0,0,0,2"/>
                                     <ComboBox SelectedItem="{Binding CameraResetMode, Mode=TwoWay}"
@@ -715,7 +787,7 @@
                                     </Grid>
                                 </StackPanel>
 
-                                <!-- 6. Delay & Jitter Parameters -->
+                                <!-- 7. Delay & Jitter Parameters -->
                                 <Grid Margin="0,0,0,10">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="*"/>
@@ -750,6 +822,15 @@
                             <StackPanel>
                                 <TextBlock Text="ROBLOX 3D STABILIZATION" FontWeight="Bold" FontSize="13" Foreground="{StaticResource AccentColor}" Margin="0,0,0,6"/>
                                 <TextBlock Text="Solving 3D perspective distortion &amp; camera drift:" FontSize="11" Foreground="{StaticResource TextMuted}" Margin="0,0,0,10"/>
+
+                                <!-- Waypoint Move Card -->
+                                <Border Background="#0F172A" CornerRadius="6" Padding="10" Margin="0,0,0,8" BorderBrush="#06B6D4" BorderThickness="1">
+                                    <StackPanel>
+                                        <TextBlock Text="🚀 Move Until Checkpoint &amp; Rotate" FontWeight="Bold" FontSize="12" Foreground="{StaticResource CyanColor}"/>
+                                        <TextBlock Text="앞으로 이동하다 특정 체크포인트(아이콘/랜드마크/색상)에 도달하면 즉각 정지하고 화면을 90도 또는 원하는 각도로 회전합니다. 타임아웃 보호로 벽에 끼이는 현상을 방지합니다."
+                                                   FontSize="11" Foreground="{StaticResource TextPrimary}" TextWrapping="Wrap" Margin="0,4,0,0"/>
+                                    </StackPanel>
+                                </Border>
 
                                 <!-- Method 1 Card -->
                                 <Border Background="#0F172A" CornerRadius="6" Padding="10" Margin="0,0,0,8" BorderBrush="#334155" BorderThickness="1">

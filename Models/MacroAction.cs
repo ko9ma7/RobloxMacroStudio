@@ -13,6 +13,7 @@ namespace RobloxMacroStudio.Models
         RobloxCameraReset,
         RobloxCameraSweep,
         CalibratedMove,
+        MoveUntilCheckpoint,   // Move forward until checkpoint reached, stop & rotate
         Delay,
         ConditionBranch,
         LogMessage
@@ -38,6 +39,22 @@ namespace RobloxMacroStudio.Models
         ZoomFirstPersonAndOut,   // Zoom in ('I') x N to snap heading, then zoom out ('O') x M
         ShiftLockToggle,         // Toggle Shift Lock to snap camera behind avatar
         TopDownBirdEye           // Drag right mouse upward to make view top-down
+    }
+
+    public enum CheckpointCheckType
+    {
+        TemplateImage,
+        ColorBlob,
+        TimedOnly
+    }
+
+    public enum OnArrivalAction
+    {
+        RotateCameraRight,       // Right-drag rightward (~90 deg)
+        RotateCameraLeft,        // Right-drag leftward (~90 deg)
+        ResetCameraHeading,      // 1st person zoom snap
+        PressKey,                // Press specific key (e.g. interact 'E' or rotate)
+        None                     // Just stop movement
     }
 
     public class MacroAction
@@ -96,6 +113,14 @@ namespace RobloxMacroStudio.Models
         public int SweepSteps { get; set; } = 12; // 12 steps * 30 deg = 360 deg sweep
         public int SweepDeltaPixels { get; set; } = 60; // Right-drag pixels per step
 
+        // Move Until Checkpoint Parameters (Waypoint Navigation)
+        public CheckpointCheckType CheckpointType { get; set; } = CheckpointCheckType.TemplateImage;
+        public int CheckIntervalMs { get; set; } = 150;
+        public int MaxDurationMs { get; set; } = 8000; // Timeout
+        public OnArrivalAction ArrivalAction { get; set; } = OnArrivalAction.RotateCameraRight;
+        public int RotateDeltaPixels { get; set; } = 120; // ~90 degree right turn
+        public string ArrivalKey { get; set; } = "E";
+
         // Timing & Jitter
         public int DelayMs { get; set; } = 500;
         public bool UseRandomJitter { get; set; } = true;
@@ -119,6 +144,7 @@ namespace RobloxMacroStudio.Models
             ActionType.RobloxCameraReset => $"3D Camera Reset ({CameraResetMode})",
             ActionType.RobloxCameraSweep => $"Camera Sweep ({SweepSteps} steps x {SweepDeltaPixels}px)",
             ActionType.CalibratedMove => $"Calibrated Walk '{KeyCode}' {KeyHoldDurationMs}ms",
+            ActionType.MoveUntilCheckpoint => $"Move '{KeyCode}' until Checkpoint -> {ArrivalAction}",
             ActionType.Delay => $"Wait {DelayMs}ms (Jitter: {(UseRandomJitter ? JitterPercentage + "%" : "Off")})",
             ActionType.ConditionBranch => $"If {(ConditionIfFound ? "Found" : "Not Found")} -> Jump to #{JumpToStepIndex}",
             ActionType.LogMessage => $"Log: {LogText}",

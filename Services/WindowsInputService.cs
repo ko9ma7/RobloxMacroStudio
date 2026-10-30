@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading.Tasks;
@@ -34,6 +35,7 @@ namespace RobloxMacroStudio.Services
         private const uint MOUSEEVENTF_ABSOLUTE = 0x8000;
 
         private const uint KEYEVENTF_KEYUP = 0x0002;
+        private const uint MAPVK_VK_TO_VSC = 0;
 
         public bool UseBackgroundMode { get; set; } = true;
 
@@ -55,6 +57,9 @@ namespace RobloxMacroStudio.Services
 
         [DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Auto)]
         private static extern int GetClassName(IntPtr hWnd, StringBuilder lpClassName, int nMaxCount);
+
+        [DllImport("user32.dll")]
+        private static extern uint MapVirtualKey(uint uCode, uint uMapType);
 
         [DllImport("user32.dll")]
         private static extern bool ClientToScreen(IntPtr hWnd, ref POINT lpPoint);
@@ -115,7 +120,8 @@ namespace RobloxMacroStudio.Services
         }
 
         /// <summary>
-        /// Detects if the target window is an emulator (e.g. LDPlayer) and resolves its child RenderWindow handle.
+        /// Recursively searches the window hierarchy of LDPlayer or other emulators
+        /// to locate the internal RenderWindow or subWin where game touch and key events are actually dispatched.
         /// </summary>
         public IntPtr GetEffectiveInputHandle(IntPtr hWnd)
         {
@@ -124,18 +130,26 @@ namespace RobloxMacroStudio.Services
 
             IntPtr candidate = IntPtr.Zero;
 
+            // Search child windows recursively
             EnumChildWindows(hWnd, (child, lParam) =>
             {
                 var sb = new StringBuilder(256);
                 GetClassName(child, sb, sb.Capacity);
                 var cls = sb.ToString();
 
-                // LDPlayer render window classes
-                if (cls.Equals("RenderWindow", StringComparison.OrdinalIgnoreCase) ||
-                    cls.Equals("subWin", StringComparison.OrdinalIgnoreCase))
+                // High priority: actual direct render canvas in LDPlayer 4/5/9
+                if (cls.Equals("RenderWindow", StringComparison.OrdinalIgnoreCase))
                 {
                     candidate = child;
-                    return false; // Stop enumeration
+                    return false; // Found best match, stop search
+                }
+
+                // Secondary priority: subWin or subPlayer
+                if (candidate == IntPtr.Zero &&
+                    (cls.Equals("subWin", StringComparison.OrdinalIgnoreCase) ||
+                     cls.Equals("subPlayer", StringComparison.OrdinalIgnoreCase)))
+                {
+                    candidate = child;
                 }
 
                 return true;
@@ -170,17 +184,18 @@ namespace RobloxMacroStudio.Services
 
                 IntPtr lParam = MakeLParam(clientX, clientY);
 
+                // Send mouse move followed by down and up to simulate realistic touch
                 PostMessage(targetHwnd, WM_MOUSEMOVE, IntPtr.Zero, lParam);
                 await Task.Delay(10);
                 PostMessage(targetHwnd, downMsg, wParamDown, lParam);
-                await Task.Delay(Math.Max(10, holdMs));
+                await Task.Delay(Math.Max(15, holdMs));
                 PostMessage(targetHwnd, upMsg, IntPtr.Zero, lParam);
 
                 if (button == MouseButtonType.DoubleLeft)
                 {
                     await Task.Delay(60);
                     PostMessage(targetHwnd, downMsg, wParamDown, lParam);
-                    await Task.Delay(Math.Max(10, holdMs));
+                    await Task.Delay(Math.Max(15, holdMs));
                     PostMessage(targetHwnd, upMsg, IntPtr.Zero, lParam);
                 }
             }
@@ -219,34 +234,20 @@ namespace RobloxMacroStudio.Services
                 var downInput = new INPUT
                 {
                     type = INPUT_MOUSE,
-                    u = new InputUnion
-                    {
-                        mi = new MOUSEINPUT { dwFlags = downFlag }
-                    }
+                    u = new InputUnion { mi = new MOUSEINPUT { dwFlags = downFlag } }
                 };
 
                 var upInput = new INPUT
                 {
                     type = INPUT_MOUSE,
-                    u = new InputUnion
-                    {
-                        mi = new MOUSEINPUT { dwFlags = upFlag }
-                    }
+                    u = new InputUnion { mi = new MOUSEINPUT { dwFlags = upFlag } }
                 };
 
                 SendInput(1, new[] { moveInput }, Marshal.SizeOf<INPUT>());
                 await Task.Delay(10);
                 SendInput(1, new[] { downInput }, Marshal.SizeOf<INPUT>());
-                await Task.Delay(Math.Max(10, holdMs));
+                await Task.Delay(Math.Max(15, holdMs));
                 SendInput(1, new[] { upInput }, Marshal.SizeOf<INPUT>());
-
-                if (button == MouseButtonType.DoubleLeft)
-                {
-                    await Task.Delay(60);
-                    SendInput(1, new[] { downInput }, Marshal.SizeOf<INPUT>());
-                    await Task.Delay(Math.Max(10, holdMs));
-                    SendInput(1, new[] { upInput }, Marshal.SizeOf<INPUT>());
-                }
             }
         }
 
@@ -258,7 +259,7 @@ namespace RobloxMacroStudio.Services
             uint upMsg = button == MouseButtonType.Right ? WM_RBUTTONUP : WM_LBUTTONUP;
             IntPtr wParam = button == MouseButtonType.Right ? (IntPtr)MK_RBUTTON : (IntPtr)MK_LBUTTON;
 
-            int steps = Math.Max(5, durationMs / 20);
+            int steps = Math.Max(6, durationMs / 25);
             int stepDelay = durationMs / steps;
 
             PostMessage(targetHwnd, WM_MOUSEMOVE, IntPtr.Zero, MakeLParam(startX, startY));
@@ -284,12 +285,35 @@ namespace RobloxMacroStudio.Services
         {
             var targetHwnd = GetEffectiveInputHandle(hWnd);
             var vk = ResolveVirtualKey(keyName);
+            uint scanCode = MapVirtualKey(vk, MAPVK_VK_TO_VSC);
 
             if (UseBackgroundMode)
             {
-                PostMessage(targetHwnd, WM_KEYDOWN, (IntPtr)vk, IntPtr.Zero);
-                await Task.Delay(Math.Max(20, holdMs));
-                PostMessage(targetHwnd, WM_KEYUP, (IntPtr)vk, IntPtr.Zero);
+                IntPtr lParamDown = (IntPtr)(1 | (scanCode << 16));
+                IntPtr lParamUp = (IntPtr)(1 | (scanCode << 16) | (1 << 30) | (1 << 31));
+
+                // Send initial key down
+                PostMessage(targetHwnd, WM_KEYDOWN, (IntPtr)vk, lParamDown);
+
+                // If holdMs is prolonged (e.g. walking for >100ms in background),
+                // send repeated keydown pulses so inactive emulator keeps continuous movement!
+                int elapsed = 0;
+                while (elapsed < holdMs)
+                {
+                    int chunk = Math.Min(50, holdMs - elapsed);
+                    await Task.Delay(chunk);
+                    elapsed += chunk;
+
+                    if (elapsed < holdMs)
+                    {
+                        // Repeat keydown with repeat flag
+                        IntPtr repeatLParam = (IntPtr)(1 | (scanCode << 16) | (1 << 30));
+                        PostMessage(targetHwnd, WM_KEYDOWN, (IntPtr)vk, repeatLParam);
+                    }
+                }
+
+                // Send key up to stop movement
+                PostMessage(targetHwnd, WM_KEYUP, (IntPtr)vk, lParamUp);
             }
             else
             {
@@ -299,12 +323,12 @@ namespace RobloxMacroStudio.Services
                 var down = new INPUT
                 {
                     type = INPUT_KEYBOARD,
-                    u = new InputUnion { ki = new KEYBDINPUT { wVk = vk } }
+                    u = new InputUnion { ki = new KEYBDINPUT { wVk = vk, wScan = (ushort)scanCode } }
                 };
                 var up = new INPUT
                 {
                     type = INPUT_KEYBOARD,
-                    u = new InputUnion { ki = new KEYBDINPUT { wVk = vk, dwFlags = KEYEVENTF_KEYUP } }
+                    u = new InputUnion { ki = new KEYBDINPUT { wVk = vk, wScan = (ushort)scanCode, dwFlags = KEYEVENTF_KEYUP } }
                 };
 
                 SendInput(1, new[] { down }, Marshal.SizeOf<INPUT>());
@@ -317,10 +341,12 @@ namespace RobloxMacroStudio.Services
         {
             var targetHwnd = GetEffectiveInputHandle(hWnd);
             var vk = ResolveVirtualKey(keyName);
+            uint scanCode = MapVirtualKey(vk, MAPVK_VK_TO_VSC);
 
             if (UseBackgroundMode)
             {
-                PostMessage(targetHwnd, WM_KEYDOWN, (IntPtr)vk, IntPtr.Zero);
+                IntPtr lParamDown = (IntPtr)(1 | (scanCode << 16));
+                PostMessage(targetHwnd, WM_KEYDOWN, (IntPtr)vk, lParamDown);
             }
             else
             {
@@ -328,7 +354,7 @@ namespace RobloxMacroStudio.Services
                 var down = new INPUT
                 {
                     type = INPUT_KEYBOARD,
-                    u = new InputUnion { ki = new KEYBDINPUT { wVk = vk } }
+                    u = new InputUnion { ki = new KEYBDINPUT { wVk = vk, wScan = (ushort)scanCode } }
                 };
                 SendInput(1, new[] { down }, Marshal.SizeOf<INPUT>());
             }
@@ -340,17 +366,19 @@ namespace RobloxMacroStudio.Services
         {
             var targetHwnd = GetEffectiveInputHandle(hWnd);
             var vk = ResolveVirtualKey(keyName);
+            uint scanCode = MapVirtualKey(vk, MAPVK_VK_TO_VSC);
 
             if (UseBackgroundMode)
             {
-                PostMessage(targetHwnd, WM_KEYUP, (IntPtr)vk, IntPtr.Zero);
+                IntPtr lParamUp = (IntPtr)(1 | (scanCode << 16) | (1 << 30) | (1 << 31));
+                PostMessage(targetHwnd, WM_KEYUP, (IntPtr)vk, lParamUp);
             }
             else
             {
                 var up = new INPUT
                 {
                     type = INPUT_KEYBOARD,
-                    u = new InputUnion { ki = new KEYBDINPUT { wVk = vk, dwFlags = KEYEVENTF_KEYUP } }
+                    u = new InputUnion { ki = new KEYBDINPUT { wVk = vk, wScan = (ushort)scanCode, dwFlags = KEYEVENTF_KEYUP } }
                 };
                 SendInput(1, new[] { up }, Marshal.SizeOf<INPUT>());
             }

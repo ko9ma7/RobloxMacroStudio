@@ -177,6 +177,15 @@ namespace RobloxMacroStudio
             }
         }
 
+        // ================= PRESET SELECTION =================
+        private void PresetComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (sender is ComboBox cb && cb.SelectedItem is string presetName)
+            {
+                _vm.LoadPresetByName(presetName);
+            }
+        }
+
         // ================= BROWSE TEMPLATE FILE =================
         private void BrowseTemplate_Click(object sender, RoutedEventArgs e)
         {
