@@ -1,0 +1,63 @@
+name: Build and Release RobloxMacroStudio
+
+on:
+  push:
+    branches: [ "main" ]
+    tags: [ "v*" ]
+  pull_request:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build WPF Desktop App
+    runs-on: windows-latest
+
+    steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v4
+
+    - name: Setup .NET SDK
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '8.0.x'
+
+    - name: Restore Dependencies
+      run: dotnet restore RobloxMacroStudio.csproj
+
+    - name: Build Solution (Release)
+      run: dotnet build RobloxMacroStudio.csproj --configuration Release --no-restore
+
+    - name: Publish Desktop Executable
+      run: >
+        dotnet publish RobloxMacroStudio.csproj
+        --configuration Release
+        --runtime win-x64
+        --self-contained false
+        -p:PublishSingleFile=true
+        -p:IncludeNativeLibrariesForSelfExtract=true
+        --output ./publish
+
+    - name: Copy Presets and Assets to Publish
+      shell: pwsh
+      run: |
+        Copy-Item -Path Presets -Destination ./publish/Presets -Recurse -Force
+        Copy-Item -Path Assets -Destination ./publish/Assets -Recurse -Force
+
+    - name: Upload Build Artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: RobloxMacroStudio-win-x64
+        path: ./publish/
+
+    - name: Create Release and Upload Asset (Tag Push Only)
+      if: startsWith(github.ref, 'refs/tags/v')
+      uses: softprops/action-gh-release@v2
+      with:
+        files: ./publish/*
+        generate_release_notes: true
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

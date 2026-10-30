@@ -1,0 +1,58 @@
+{
+  "Title": "Roblox Auto Farming & Color Detection Loop",
+  "Description": "Calibrates 3D viewpoint, detects resource markers using HSV color blobs, and clicks target with automatic recovery branching.",
+  "LoopCount": 0,
+  "LoopIntervalMs": 500,
+  "StopOnError": false,
+  "Actions": [
+    {
+      "Id": "cam_align",
+      "Name": "1. Snap Camera Heading",
+      "Type": "RobloxCameraReset",
+      "IsEnabled": true,
+      "CameraResetMode": "ZoomFirstPersonAndOut",
+      "ZoomInCount": 8,
+      "ZoomOutCount": 5
+    },
+    {
+      "Id": "find_marker",
+      "Name": "2. Detect Resource Marker (Green/Gold HSV)",
+      "Type": "FindColor",
+      "IsEnabled": true,
+      "HsvMinH": 35,
+      "HsvMaxH": 85,
+      "HsvMinS": 100,
+      "HsvMaxS": 255,
+      "HsvMinV": 100,
+      "HsvMaxV": 255,
+      "MinContourArea": 60
+    },
+    {
+      "Id": "branch_check",
+      "Name": "3. If Found Proceed Else Realign",
+      "Type": "ConditionBranch",
+      "IsEnabled": true,
+      "ConditionIfFound": false,
+      "JumpToStepIndex": 0
+    },
+    {
+      "Id": "click_target",
+      "Name": "4. Click Detected Resource",
+      "Type": "Click",
+      "IsEnabled": true,
+      "CoordSource": "LastMatchCenter",
+      "MouseButton": "Left",
+      "OffsetX": 0,
+      "OffsetY": 0
+    },
+    {
+      "Id": "gather_wait",
+      "Name": "5. Gathering Wait Delay",
+      "Type": "Delay",
+      "IsEnabled": true,
+      "DelayMs": 1500,
+      "UseRandomJitter": true,
+      "JitterPercentage": 15
+    }
+  ]
+}

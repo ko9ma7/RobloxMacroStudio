@@ -1,0 +1,54 @@
+{
+  "Title": "Roblox 3D Camera Stabilization & Calibrated Move",
+  "Description": "Demonstrates 3D camera heading reset using 1st person zoom lock, followed by calibrated navigation and interaction in LDPlayer.",
+  "LoopCount": 0,
+  "LoopIntervalMs": 800,
+  "StopOnError": false,
+  "Actions": [
+    {
+      "Id": "cam_reset",
+      "Name": "1. Reset 3D Camera Heading (Zoom Snap)",
+      "Type": "RobloxCameraReset",
+      "IsEnabled": true,
+      "CameraResetMode": "ZoomFirstPersonAndOut",
+      "ZoomInCount": 8,
+      "ZoomOutCount": 5
+    },
+    {
+      "Id": "settle_delay",
+      "Name": "2. Wait Physics Settle",
+      "Type": "Delay",
+      "IsEnabled": true,
+      "DelayMs": 250,
+      "UseRandomJitter": true,
+      "JitterPercentage": 15
+    },
+    {
+      "Id": "walk_forward",
+      "Name": "3. Calibrated Walk Forward",
+      "Type": "CalibratedMove",
+      "IsEnabled": true,
+      "KeyCode": "W",
+      "KeyHoldDurationMs": 900
+    },
+    {
+      "Id": "interact_click",
+      "Name": "4. Center Screen Interact Click",
+      "Type": "Click",
+      "IsEnabled": true,
+      "CoordSource": "ScreenCenter",
+      "MouseButton": "Left",
+      "OffsetX": 0,
+      "OffsetY": 0
+    },
+    {
+      "Id": "rest_delay",
+      "Name": "5. Loop Rest Delay",
+      "Type": "Delay",
+      "IsEnabled": true,
+      "DelayMs": 800,
+      "UseRandomJitter": true,
+      "JitterPercentage": 20
+    }
+  ]
+}
